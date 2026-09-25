@@ -45,7 +45,7 @@ def test_to_answers_shapes_and_formulas():
     assert ans["c"]["choice"] == "a" and ans["c"]["probabilities"] == {"a": 0.8, "b": 0.15, "c": 0.05}
     assert ans["c"]["confidence"] == round((0.8 - 1 / 3) / (1 - 1 / 3), 4)
     assert ans["s"]["score"] == 1.5 and ans["s"]["probabilities"] == {"0": 0.1, "1": 0.3, "2": 0.6}
-    assert ans["s"]["legend"] == {"0": "lo", "1": "mid", "2": "hi"}
+    assert ans["s"]["legend"] == {"0": "lo", "1": "mid", "2": "hi"} and ans["s"]["confidence"] == 0.25   # 1 - (0.1*2 + 0.3*1) / (2/3)
 
 
 @pytest.mark.parametrize("p", [[0.79] + [0.21 / 39] * 39, [1 / 255] * 255])
@@ -61,7 +61,20 @@ def test_confidence_edge_cases():
     assert choice_confidence([0.5, 0.5]) == 0.0
     assert math.isclose(choice_confidence([1.0, 0.0, 0.0]), 1.0)
     assert score_confidence([0.0, 1.0, 0.0]) == 1.0
-    assert 0.0 <= score_confidence([0.5, 0.0, 0.5]) <= 1.0
+    assert score_confidence([0.0, 0.0, 0.0, 1.0]) == 1.0
+    assert all(score_confidence([1 / L] * L) == 0.0 for L in range(2, 11))     # uniform -> 0
+    assert score_confidence([0.5, 0.0, 0.5]) == 0.0                              # more spread than uniform clips at 0
+    assert score_confidence([2.0, 6.0, 0.0]) == score_confidence([0.25, 0.75, 0.0])  # normalised first, as the adapter does
+    assert choice_confidence([0.0, 0.0]) == 0.0 and score_confidence([0.0, 0.0, 0.0]) == 0.0  # all zeros -> uniform
+
+
+@pytest.mark.parametrize("p,want", [
+    ([0.0, 0.57, 0.43], 0.35), ([0.0, 0.14, 0.86, 0.0, 0.0], 0.89), ([0.0, 0.0, 0.48, 0.52], 0.52),
+    ([0.0, 0.74, 0.26], 0.61), ([0.0, 0.0, 0.0, 1.0], 1.0)])
+def test_score_confidence_matches_typesafe_docs(p, want):
+    """The Score examples on docs.typesafe.ai/primitives/score.md. The docs display probabilities and confidence at two
+    decimals, so the probabilities behind 0.35 / 0.89 were not exactly .43 / .14: equal within that display rounding."""
+    assert abs(round(score_confidence(p), 2) - want) < 0.011
 
 
 @pytest.mark.parametrize("bad", [
